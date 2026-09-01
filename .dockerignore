@@ -1,0 +1,8 @@
+.terraform
+.git
+.github
+infra_code
+*.md
+__pycache__
+.pytest_cache
+
