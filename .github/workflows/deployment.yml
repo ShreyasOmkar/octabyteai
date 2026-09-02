@@ -53,69 +53,90 @@ jobs:
       - name: Push container image
         run: docker push "${{ steps.image.outputs.uri }}"
 
-  # staging:
-  #   needs: build
-  #   runs-on: ubuntu-latest
-  #   environment: staging
+  staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
 
-  #   steps:
-  #     - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - uses: aws-actions/configure-aws-credentials@v4
-  #       with:
-  #         role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-  #         aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-  #     - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
 
-  #     - name: Terraform init
-  #       run: |
-  #         terraform -chdir=infra init \
-  #           -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
-  #           -backend-config="key=octabyte/staging/terraform.tfstate" \
-  #           -backend-config="region=${{ env.AWS_REGION }}" \
-  #           -backend-config="dynamodb_table=terraform-locks" \
-  #           -backend-config="encrypt=true"
+      - name: Validate backend variables
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          if [ -z "$TF_STATE_BUCKET" ]; then
+            echo "::error::TF_STATE_BUCKET is not configured."
+            exit 1
+          fi
 
-  #     - name: Deploy to staging
-  #       run: |
-  #         terraform -chdir=infra apply \
-  #           -auto-approve \
-  #           -var-file=environments/staging/terraform.tfvars \
-  #           -var="image_uri=${{ needs.build.outputs.image }}"
+          if [[ "$TF_STATE_BUCKET" == s3://* ]] ||
+            [[ "$TF_STATE_BUCKET" == /* ]] ||
+            [[ "$TF_STATE_BUCKET" == */ ]]; then
+            echo "::error::TF_STATE_BUCKET must contain only the bucket name."
+            exit 1
+          fi
 
-  # production:
-  #   needs: [build, staging]
-  #   runs-on: ubuntu-latest
+          echo "Terraform state bucket: $TF_STATE_BUCKET"
+          echo "AWS region: $AWS_REGION"
 
-  #   # Configure required reviewers for this environment in GitHub.
-  #   environment: production
+      - name: Terraform init
+        run: |
+          terraform -chdir=infra init \
+            -reconfigure \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=octabyte/staging/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=terraform-locks" \
+            -backend-config="encrypt=true"
 
-  #   steps:
-  #     - uses: actions/checkout@v4
+      - name: Deploy to staging
+        run: |
+          terraform -chdir=infra apply \
+            -auto-approve \
+            -var-file=environments/staging/terraform.tfvars \
+            -var="image_uri=${{ needs.build.outputs.image }}"
 
-  #     - uses: aws-actions/configure-aws-credentials@v4
-  #       with:
-  #         role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-  #         aws-region: ${{ env.AWS_REGION }}
+  production:
+    needs: [build, staging]
+    runs-on: ubuntu-latest
 
-  #     - uses: hashicorp/setup-terraform@v3
+    # Configure required reviewers for this environment in GitHub.
+    environment: production
 
-  #     - name: Terraform init
-  #       run: |
-  #         terraform -chdir=infra init \
-  #           -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
-  #           -backend-config="key=octabyte/production/terraform.tfstate" \
-  #           -backend-config="region=${{ env.AWS_REGION }}" \
-  #           -backend-config="dynamodb_table=terraform-locks" \
-  #           -backend-config="encrypt=true"
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - name: Deploy to production
-  #       run: |
-  #         terraform -chdir=infra apply \
-  #           -auto-approve \
-  #           -var-file=environments/production/terraform.tfvars \
-  #           -var="image_uri=${{ needs.build.outputs.image }}"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform init
+        run: |
+          terraform -chdir=infra init \
+            -reconfigure \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=octabyte/staging/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=terraform-locks" \
+            -backend-config="encrypt=true"
+
+      - name: Deploy to production
+        run: |
+          terraform -chdir=infra apply \
+            -auto-approve \
+            -var-file=environments/production/terraform.tfvars \
+            -var="image_uri=${{ needs.build.outputs.image }}"
 
   notify:
     name: Slack notification

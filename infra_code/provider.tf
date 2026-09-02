@@ -1,17 +1,23 @@
 terraform {
-  required_version = ">=1.8.0"
-  required_providers {
-    aws    = { source = "hashicorp/aws", version = ">5.70" }
-    random = { source = "hashicorp/random", version = ">3.6" }
-  }
-  backend "s3" {
+  required_version = ">= 1.8.0"
 
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
   }
+
+  backend "s3" {}
 }
 
 provider "aws" {
-  region = var.aws-region
+  region = "ap-south-1"
+
   default_tags {
-    tags = merge(var.tags, { Environment = var.environment, })
+    tags = merge(var.tags, {
+      Environment = var.environment
+      ManagedBy   = "Terraform"
+    })
   }
 }
