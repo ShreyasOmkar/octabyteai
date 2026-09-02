@@ -1,3 +1,5 @@
+name: Deploy
+
 on:
   push:
     branches: [main]
@@ -6,64 +8,154 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: octabyte-app
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     outputs:
       image: ${{ steps.image.outputs.uri }}
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
       - id: ecr
         uses: aws-actions/amazon-ecr-login@v2
+
       - id: image
+        name: Generate image URI
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
-        run: echo "uri=$REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-      - run: docker build --tag "${{ steps.image.outputs.uri }}" .
+        run: |
+          echo "uri=$REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build container image
+        run: docker build --tag "${{ steps.image.outputs.uri }}" .
+
       - name: Container scan
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ steps.image.outputs.uri }}
           severity: HIGH,CRITICAL
           exit-code: "1"
           ignore-unfixed: true
-      - run: docker push "${{ steps.image.outputs.uri }}"
 
-#   staging:
-#     needs: build
-#     runs-on: ubuntu-latest
-#     environment: staging
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: aws-actions/configure-aws-credentials@v4
-#         with:
-#           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-#           aws-region: ${{ env.AWS_REGION }}
+      - name: Push container image
+        run: docker push "${{ steps.image.outputs.uri }}"
 
-#   production:
-#     needs: [build, staging]
-#     runs-on: ubuntu-latest
-#     environment: production # Configure required reviewers for this environment in GitHub.
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: aws-actions/configure-aws-credentials@v4
-#         with:
-#           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-#           aws-region: ${{ env.AWS_REGION }}
+  # staging:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   environment: staging
 
-#   notify-failure:
-#     if: always() && failure()
-#     needs: [build, staging, production]
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Notify Slack
-#         env:
-#           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-#         run: |
-#           curl --fail-with-body --header 'Content-type:application/json' \
-#             --data "{\"text\":\"Deployment failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}" \
-#             "$SLACK_WEBHOOK_URL"
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+  #         aws-region: ${{ env.AWS_REGION }}
+
+  #     - uses: hashicorp/setup-terraform@v3
+
+  #     - name: Terraform init
+  #       run: |
+  #         terraform -chdir=infra init \
+  #           -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+  #           -backend-config="key=octabyte/staging/terraform.tfstate" \
+  #           -backend-config="region=${{ env.AWS_REGION }}" \
+  #           -backend-config="dynamodb_table=terraform-locks" \
+  #           -backend-config="encrypt=true"
+
+  #     - name: Deploy to staging
+  #       run: |
+  #         terraform -chdir=infra apply \
+  #           -auto-approve \
+  #           -var-file=environments/staging/terraform.tfvars \
+  #           -var="image_uri=${{ needs.build.outputs.image }}"
+
+  # production:
+  #   needs: [build, staging]
+  #   runs-on: ubuntu-latest
+
+  #   # Configure required reviewers for this environment in GitHub.
+  #   environment: production
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+  #         aws-region: ${{ env.AWS_REGION }}
+
+  #     - uses: hashicorp/setup-terraform@v3
+
+  #     - name: Terraform init
+  #       run: |
+  #         terraform -chdir=infra init \
+  #           -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+  #           -backend-config="key=octabyte/production/terraform.tfstate" \
+  #           -backend-config="region=${{ env.AWS_REGION }}" \
+  #           -backend-config="dynamodb_table=terraform-locks" \
+  #           -backend-config="encrypt=true"
+
+  #     - name: Deploy to production
+  #       run: |
+  #         terraform -chdir=infra apply \
+  #           -auto-approve \
+  #           -var-file=environments/production/terraform.tfvars \
+  #           -var="image_uri=${{ needs.build.outputs.image }}"
+
+  notify:
+    name: Slack notification
+    needs: [build]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          STAGING_RESULT: ${{ needs.staging.result }}
+          PRODUCTION_RESULT: ${{ needs.production.result }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is unavailable; skipping notification."
+            exit 0
+          fi
+
+          if [ "$PRODUCTION_RESULT" = "success" ]; then
+            STATUS="✅ Production deployment succeeded"
+          else
+            STATUS="❌ Deployment pipeline did not complete successfully"
+          fi
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          PAYLOAD=$(jq -n \
+            --arg text "${STATUS}
+          Repository: ${GITHUB_REPOSITORY}
+          Branch: ${GITHUB_REF_NAME}
+          Image tag: ${GITHUB_SHA}
+          Build: ${BUILD_RESULT}
+          Staging: ${STAGING_RESULT}
+          Production: ${PRODUCTION_RESULT}
+          Triggered by: ${GITHUB_ACTOR}
+          Run: ${RUN_URL}" \
+            '{text: $text}')
+
+          curl --fail-with-body \
+            --retry 3 \
+            --header "Content-Type: application/json" \
+            --data "$PAYLOAD" \
+            "$SLACK_WEBHOOK_URL"

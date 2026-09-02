@@ -12,28 +12,84 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements-dev.txt
-      
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
       - name: Unit tests
         run: PYTHONPATH=. pytest -q
-      
+
       - name: Build image
         run: docker build -t octabyte-app:ci .
-      
+
       - name: Integration test
         run: |
-          docker run --detach --name octabyte-api --publish 127.0.0.1:8000:8000 octabyte-app:ci
+          docker run \
+            --detach \
+            --name octabyte-api \
+            --publish 127.0.0.1:8000:8000 \
+            octabyte-app:ci
+
           for attempt in {1..15}; do
-            curl --fail http://127.0.0.1:8000/health && exit 0
+            if curl --fail http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+
+            echo "Health check attempt ${attempt}/15 failed"
             sleep 2
           done
+
           docker logs octabyte-api
           exit 1
 
-      
+      - name: Clean up integration container
+        if: always()
+        run: docker rm --force octabyte-api 2>/dev/null || true
+
+  notify:
+    name: Slack notification
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify Slack
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is unavailable; skipping notification."
+            exit 0
+          fi
+
+          if [ "$TEST_RESULT" = "success" ]; then
+            STATUS="✅ CI succeeded"
+          else
+            STATUS="❌ CI failed"
+          fi
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          PAYLOAD=$(jq -n \
+            --arg text "${STATUS}
+          Repository: ${GITHUB_REPOSITORY}
+          Branch: ${GITHUB_REF_NAME}
+          Commit: ${GITHUB_SHA:0:7}
+          Triggered by: ${GITHUB_ACTOR}
+          Run: ${RUN_URL}" \
+            '{text: $text}')
+
+          curl --fail-with-body \
+            --retry 3 \
+            --header "Content-Type: application/json" \
+            --data "$PAYLOAD" \
+            "$SLACK_WEBHOOK_URL"
