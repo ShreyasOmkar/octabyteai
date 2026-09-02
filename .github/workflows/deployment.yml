@@ -33,6 +33,28 @@ jobs:
           ignore-unfixed: true
       - run: docker push "${{ steps.image.outputs.uri }}"
 
+  staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+  production:
+    needs: [build, staging]
+    runs-on: ubuntu-latest
+    environment: production # Configure required reviewers for this environment in GitHub.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
   notify-failure:
     if: always() && failure()
     needs: [build, staging, production]
