@@ -61,35 +61,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Notify Slack
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          TEST_RESULT: ${{ needs.test.result }}
-        run: |
-          if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "SLACK_WEBHOOK_URL is unavailable; skipping notification."
-            exit 0
-          fi
+        - name: Test Slack notification
+          env:
+            SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          run: |
+            if [[ "$SLACK_WEBHOOK_URL" != https://hooks.slack.com/services/* ]]; then
+              echo "::error::SLACK_WEBHOOK_URL is missing or incorrectly formatted."
+              exit 1
+            fi
 
-          if [ "$TEST_RESULT" = "success" ]; then
-            STATUS="✅ CI succeeded"
-          else
-            STATUS="❌ CI failed"
-          fi
+            curl --fail-with-body \
+              --retry 3 \
+              --request POST \
+              --header "Content-Type: application/json" \
+              --data '{"text":"✅ GitHub Actions Slack webhook test succeeded."}' \
+              "$SLACK_WEBHOOK_URL
+  #     - name: Notify Slack
+  #       env:
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+  #         TEST_RESULT: ${{ needs.test.result }}
+  #       run: |
+  #         if [ -z "$SLACK_WEBHOOK_URL" ]; then
+  #           echo "SLACK_WEBHOOK_URL is unavailable; skipping notification."
+  #           exit 0
+  #         fi
 
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+  #         if [ "$TEST_RESULT" = "success" ]; then
+  #           STATUS="✅ CI succeeded"
+  #         else
+  #           STATUS="❌ CI failed"
+  #         fi
 
-          PAYLOAD=$(jq -n \
-            --arg text "${STATUS}
-          Repository: ${GITHUB_REPOSITORY}
-          Branch: ${GITHUB_REF_NAME}
-          Commit: ${GITHUB_SHA:0:7}
-          Triggered by: ${GITHUB_ACTOR}
-          Run: ${RUN_URL}" \
-            '{text: $text}')
+  #         RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          curl --fail-with-body \
-            --retry 3 \
-            --header "Content-Type: application/json" \
-            --data "$PAYLOAD" \
-            "$SLACK_WEBHOOK_URL"
+  #         PAYLOAD=$(jq -n \
+  #           --arg text "${STATUS}
+  #         Repository: ${GITHUB_REPOSITORY}
+  #         Branch: ${GITHUB_REF_NAME}
+  #         Commit: ${GITHUB_SHA:0:7}
+  #         Triggered by: ${GITHUB_ACTOR}
+  #         Run: ${RUN_URL}" \
+  #           '{text: $text}')
+
+  #         curl --fail-with-body \
+  #           --retry 3 \
+  #           --header "Content-Type: application/json" \
+  #           --data "$PAYLOAD" \
+  #           "$SLACK_WEBHOOK_URL"
+
+  "
