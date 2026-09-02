@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      
+      - name: Unit tests
+        run: PYTHONPATH=. pytest -q
+      
+      - name: Build image
+        run: docker build -t octabyte-app:ci .
+      
+      - name: Integration test
+        run: |
+          docker run --detach --name octabyte-api --publish 127.0.0.1:8000:8000 octabyte-app:ci
+          for attempt in {1..15}; do
+            curl --fail http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          docker logs octabyte-api
+          exit 1
+
+      
