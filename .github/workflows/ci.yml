@@ -22,7 +22,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -r dev-requirements.txt
 
       - name: Unit tests
         run: PYTHONPATH=. pytest -q
