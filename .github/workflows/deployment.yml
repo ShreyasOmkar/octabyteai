@@ -25,7 +25,7 @@ jobs:
         run: echo "uri=$REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
       - run: docker build --tag "${{ steps.image.outputs.uri }}" .
       - name: Container scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: ${{ steps.image.outputs.uri }}
           severity: HIGH,CRITICAL
