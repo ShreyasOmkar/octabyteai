@@ -117,7 +117,7 @@ jobs:
 
   notify:
     name: Slack notification
-    needs: [build]
+    needs: build
     if: always()
     runs-on: ubuntu-latest
 
@@ -126,36 +126,49 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           BUILD_RESULT: ${{ needs.build.result }}
-          STAGING_RESULT: ${{ needs.staging.result }}
-          PRODUCTION_RESULT: ${{ needs.production.result }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
             echo "SLACK_WEBHOOK_URL is unavailable; skipping notification."
             exit 0
           fi
 
-          if [ "$PRODUCTION_RESULT" = "success" ]; then
-            STATUS="✅ Production deployment succeeded"
+          if [[ "$SLACK_WEBHOOK_URL" != https://hooks.slack.com/services/* ]]; then
+            echo "::error::SLACK_WEBHOOK_URL has an invalid format."
+            exit 1
+          fi
+
+          if [ "$BUILD_RESULT" = "success" ]; then
+            STATUS="✅ Image successfully built, scanned, and pushed to ECR"
           else
-            STATUS="❌ Deployment pipeline did not complete successfully"
+            STATUS="❌ Image build, scan, or ECR push failed"
           fi
 
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
 
           PAYLOAD=$(jq -n \
-            --arg text "${STATUS}
-          Repository: ${GITHUB_REPOSITORY}
-          Branch: ${GITHUB_REF_NAME}
-          Image tag: ${GITHUB_SHA}
-          Build: ${BUILD_RESULT}
-          Staging: ${STAGING_RESULT}
-          Production: ${PRODUCTION_RESULT}
-          Triggered by: ${GITHUB_ACTOR}
-          Run: ${RUN_URL}" \
-            '{text: $text}')
+            --arg status "$STATUS" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg commit "$SHORT_SHA" \
+            --arg build "$BUILD_RESULT" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg run_url "$RUN_URL" \
+            '{
+              text: (
+                $status + "\n" +
+                "Repository: " + $repository + "\n" +
+                "Branch: " + $branch + "\n" +
+                "Commit: " + $commit + "\n" +
+                "Build: " + $build + "\n" +
+                "Triggered by: " + $actor + "\n" +
+                "Workflow: " + $run_url
+              )
+            }')
 
           curl --fail-with-body \
             --retry 3 \
+            --request POST \
             --header "Content-Type: application/json" \
             --data "$PAYLOAD" \
             "$SLACK_WEBHOOK_URL"
