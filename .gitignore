@@ -4,7 +4,6 @@
 *.tfstate
 *.tfplan
 *.tfstate.*
-.terraform.lock.hcl
 __pycache__
 .pytest
 dist/
