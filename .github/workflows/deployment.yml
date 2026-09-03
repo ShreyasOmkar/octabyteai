@@ -10,7 +10,7 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  ECR_REPOSITORY: octabyte-app
+  ECR_REPOSITORY: octabyteai
 
 jobs:
   build:

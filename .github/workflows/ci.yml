@@ -29,7 +29,7 @@ jobs:
         run: PYTHONPATH=. pytest -q
 
       - name: Build image
-        run: docker build -t octabyte-app:ci .
+        run: docker build -t octabyteai:ci .
 
       - name: Integration test
         run: |
@@ -37,7 +37,7 @@ jobs:
             --detach \
             --name octabyte-api \
             --publish 127.0.0.1:8000:8000 \
-            octabyte-app:ci
+            octabyteai:ci
 
           for attempt in {1..15}; do
             if curl --fail http://127.0.0.1:8000/health; then
