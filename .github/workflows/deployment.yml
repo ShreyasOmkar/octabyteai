@@ -22,12 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Display expected OIDC identity
+        run: |
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Ref: $GITHUB_REF"
+          echo "Environment: build job has no GitHub environment"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          # role-session-name: github-actions-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-actions-${{ github.run_id }}
+          aws-region: ap-south-1
 
       - name: Verify AWS identity
         run: aws sts get-caller-identity
