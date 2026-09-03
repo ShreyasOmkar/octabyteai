@@ -59,7 +59,7 @@ jobs:
     name: Slack notification
     needs: test
     if: always()
-    runs-on: ubuntu-latest
+    
 
     steps:
       - name: Notify Slack
