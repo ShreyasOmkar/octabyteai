@@ -53,13 +53,15 @@ jobs:
 
       - name: Container scan
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: "true"
         with:
           image-ref: ${{ steps.image.outputs.uri }}
           scan-type: image
           format: table
           severity: HIGH,CRITICAL
-          exit-code: "1"
           ignore-unfixed: true
+          exit-code: "1"
 
       - name: Push container image
         run: docker push "${{ steps.image.outputs.uri }}"
