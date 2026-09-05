@@ -122,8 +122,8 @@ jobs:
         run: |
           terraform -chdir=infra_code apply \
             -auto-approve \
-            -var-file=infra_code/environments/staging/staging.tfvars \
-            -var="image_uri=${{ needs.build.outputs.image }}"
+            -var-file=environments/staging/staging.tfvars \
+            -var="image_tag=${GITHUB_SHA}"
 
   production:
     needs: [build, staging]
@@ -157,8 +157,8 @@ jobs:
         run: |
           terraform -chdir=infra_code apply \
             -auto-approve \
-            -var-file=infra_code/environments/prod/prod.tfvars \
-            -var="image_uri=${{ needs.build.outputs.image }}"
+            -var-file=environments/prod/prod.tfvars \
+            -var="image_tag=${GITHUB_SHA}"
 
   notify:
     name: Slack notification
