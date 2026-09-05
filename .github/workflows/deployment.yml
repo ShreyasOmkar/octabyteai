@@ -122,7 +122,7 @@ jobs:
         run: |
           terraform -chdir=infra_code apply \
             -auto-approve \
-            -var-file=environments/staging/terraform.tfvars \
+            -var-file=infra_code\environments\staging\staging.tfvars \
             -var="image_uri=${{ needs.build.outputs.image }}"
 
   production:
@@ -157,7 +157,7 @@ jobs:
         run: |
           terraform -chdir=infra_code apply \
             -auto-approve \
-            -var-file=environments/production/terraform.tfvars \
+            -var-file=infra_code\environments\prod\prod.tfvars \
             -var="image_uri=${{ needs.build.outputs.image }}"
 
   notify:
