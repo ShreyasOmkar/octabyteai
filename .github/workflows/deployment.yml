@@ -113,7 +113,7 @@ jobs:
           terraform -chdir=infra_code init \
             -reconfigure \
             -backend-config="bucket=$TF_STATE_BUCKET" \
-            -backend-config="key=octabyte/staging/terraform.tfstate" \
+            -backend-config="key=octabyte/staging.tfstate" \
             -backend-config="region=$AWS_REGION" \
             -backend-config="encrypt=true" \
             -backend-config="use_lockfile=true"
@@ -122,7 +122,7 @@ jobs:
         run: |
           terraform -chdir=infra_code apply \
             -auto-approve \
-            -var-file=infra_code\environments\staging\staging.tfvars \
+            -var-file=infra_code/environments/staging/staging.tfvars \
             -var="image_uri=${{ needs.build.outputs.image }}"
 
   production:
@@ -148,7 +148,7 @@ jobs:
           terraform -chdir=infra_code init \
             -reconfigure \
             -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
-            -backend-config="key=octabyte/production/terraform.tfstate" \
+            -backend-config="key=octabyte/production.tfstate" \
             -backend-config="region=$AWS_REGION" \
             -backend-config="dynamodb_table=terraform-locks" \
             -backend-config="encrypt=true"
@@ -157,7 +157,7 @@ jobs:
         run: |
           terraform -chdir=infra_code apply \
             -auto-approve \
-            -var-file=infra_code\environments\prod\prod.tfvars \
+            -var-file=infra_code/environments/prod/prod.tfvars \
             -var="image_uri=${{ needs.build.outputs.image }}"
 
   notify:
